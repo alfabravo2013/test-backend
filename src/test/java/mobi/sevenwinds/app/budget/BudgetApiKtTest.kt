@@ -124,7 +124,7 @@ class BudgetApiKtTest : ServerTest() {
         addRecord(BudgetRecordCreateRequest(2020, 5, 50, BudgetType.Приход))
 
         RestAssured.given()
-            .get("/budget/year/2020/stats?limit=3&offset=0&authorName=втор")
+            .get("/budget/year/2020/stats?limit=3&offset=0&authorName=ВТОР")
             .toResponse<BudgetYearStatsResponse>().let { response ->
                 println("${response.total} / ${response.items} / ${response.totalByType}")
 
