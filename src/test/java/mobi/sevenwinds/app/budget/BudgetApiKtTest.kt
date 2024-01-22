@@ -10,6 +10,7 @@ import mobi.sevenwinds.common.toResponse
 import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.junit.Assert
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -111,18 +112,40 @@ class BudgetApiKtTest : ServerTest() {
             .statusCode(400)
     }
 
+    @Test
+    fun testFilterBudgetRecordsByAuthorName() {
+        val authorName = "Автор Авторович Авторов"
+        val (authorId, _) = addAuthor(AuthorCreateRequest(authorName))
+
+        addRecord(BudgetRecordCreateRequest(2020, 5, 10, BudgetType.Приход, authorId))
+        addRecord(BudgetRecordCreateRequest(2020, 5, 20, BudgetType.Приход, authorId))
+        addRecord(BudgetRecordCreateRequest(2020, 5, 30, BudgetType.Приход, authorId))
+        addRecord(BudgetRecordCreateRequest(2020, 5, 40, BudgetType.Приход, authorId))
+        addRecord(BudgetRecordCreateRequest(2020, 5, 50, BudgetType.Приход))
+
+        RestAssured.given()
+            .get("/budget/year/2020/stats?limit=3&offset=0&authorName=втор")
+            .toResponse<BudgetYearStatsResponse>().let { response ->
+                println("${response.total} / ${response.items} / ${response.totalByType}")
+
+                Assert.assertEquals(4, response.total)
+                Assert.assertEquals(3, response.items.size)
+                Assert.assertEquals(100, response.totalByType[BudgetType.Приход.name])
+            }
+    }
+
     private fun addRecord(record: BudgetRecordCreateRequest) {
         RestAssured.given()
             .jsonBody(record)
             .post("/budget/add")
             .toResponse<BudgetRecord>().let { response ->
-                Assert.assertEquals(record.year, response.year)
-                Assert.assertEquals(record.month, response.month)
-                Assert.assertEquals(record.amount, response.amount)
-                Assert.assertEquals(record.type, response.type)
+                assertEquals(record.year, response.year)
+                assertEquals(record.month, response.month)
+                assertEquals(record.amount, response.amount)
+                assertEquals(record.type, response.type)
 
                 val nullableFields = listOf(record.authorId, response.authorName, response.createdAt)
-                Assert.assertTrue(nullableFields.all { it == null } || nullableFields.none { it == null })
+                assertTrue(nullableFields.all { it == null } || nullableFields.none { it == null })
             }
     }
 

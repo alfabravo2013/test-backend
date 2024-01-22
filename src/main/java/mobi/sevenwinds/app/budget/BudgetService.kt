@@ -4,10 +4,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import mobi.sevenwinds.app.author.AuthorEntity
 import mobi.sevenwinds.app.author.AuthorTable
-import org.jetbrains.exposed.sql.SortOrder
+import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.select
-import org.jetbrains.exposed.sql.sum
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.like
 import org.jetbrains.exposed.sql.transactions.transaction
 
 object BudgetService {
@@ -30,22 +29,27 @@ object BudgetService {
 
     suspend fun getYearStats(param: BudgetYearParam): BudgetYearStatsResponse = withContext(Dispatchers.IO) {
         transaction {
-            val withBudgetYear = BudgetTable.year eq param.year
+            val withBudgetRecordFilter = buildFilterFrom(param)
 
             val itemsQuery = BudgetTable
                 .leftJoin(AuthorTable)
-                .select { withBudgetYear }
+                .select { withBudgetRecordFilter }
                 .orderBy(BudgetTable.month, SortOrder.ASC)
                 .orderBy(BudgetTable.amount, SortOrder.DESC)
                 .limit(param.limit, param.offset)
 
             val data = BudgetEntity.wrapRows(itemsQuery).map { it.toResponse() }
 
-            val total = BudgetTable.select { withBudgetYear }.count()
+            val total = BudgetTable
+                .leftJoin(AuthorTable)
+                .select { withBudgetRecordFilter }
+                .count()
 
             val sum = BudgetTable.amount.sum()
-            val sumByType = BudgetTable.slice(BudgetTable.type, sum)
-                .select { withBudgetYear }
+            val sumByType = BudgetTable
+                .leftJoin(AuthorTable)
+                .slice(BudgetTable.type, sum)
+                .select { withBudgetRecordFilter }
                 .groupBy(BudgetTable.type)
                 .associate { resultRow -> resultRow[BudgetTable.type].name to (resultRow[sum] ?: 0) }
 
@@ -54,6 +58,18 @@ object BudgetService {
                 totalByType = sumByType,
                 items = data
             )
+        }
+    }
+
+    private fun buildFilterFrom(param: BudgetYearParam): Op<Boolean> {
+        val yearFilter = BudgetTable.year eq param.year
+
+        return if (param.authorName != null) {
+            val uppercaseName = param.authorName.toUpperCase()
+            val authorNameFilter = AuthorTable.fullName.upperCase().like("%$uppercaseName%")
+            yearFilter and authorNameFilter
+        } else {
+            yearFilter
         }
     }
 }
