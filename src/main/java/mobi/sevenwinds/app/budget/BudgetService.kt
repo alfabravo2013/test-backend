@@ -4,9 +4,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import mobi.sevenwinds.app.author.AuthorEntity
 import mobi.sevenwinds.app.author.AuthorTable
+import mobi.sevenwinds.app.ilike
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.like
 import org.jetbrains.exposed.sql.transactions.transaction
 
 object BudgetService {
@@ -30,9 +30,9 @@ object BudgetService {
     suspend fun getYearStats(param: BudgetYearParam): BudgetYearStatsResponse = withContext(Dispatchers.IO) {
         transaction {
             val withBudgetRecordFilter = buildFilterFrom(param)
+            val tables = BudgetTable.leftJoin(AuthorTable)
 
-            val itemsQuery = BudgetTable
-                .leftJoin(AuthorTable)
+            val itemsQuery = tables
                 .select { withBudgetRecordFilter }
                 .orderBy(BudgetTable.month, SortOrder.ASC)
                 .orderBy(BudgetTable.amount, SortOrder.DESC)
@@ -40,14 +40,12 @@ object BudgetService {
 
             val data = BudgetEntity.wrapRows(itemsQuery).map { it.toResponse() }
 
-            val total = BudgetTable
-                .leftJoin(AuthorTable)
+            val total = tables
                 .select { withBudgetRecordFilter }
                 .count()
 
             val sum = BudgetTable.amount.sum()
-            val sumByType = BudgetTable
-                .leftJoin(AuthorTable)
+            val sumByType = tables
                 .slice(BudgetTable.type, sum)
                 .select { withBudgetRecordFilter }
                 .groupBy(BudgetTable.type)
@@ -65,8 +63,7 @@ object BudgetService {
         val yearFilter = BudgetTable.year eq param.year
 
         return if (param.authorName != null) {
-            val uppercaseName = param.authorName.toUpperCase()
-            val authorNameFilter = AuthorTable.fullName.upperCase().like("%$uppercaseName%")
+            val authorNameFilter = AuthorTable.fullName.ilike("%${param.authorName}%")
             yearFilter and authorNameFilter
         } else {
             yearFilter
